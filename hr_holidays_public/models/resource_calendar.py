@@ -21,8 +21,30 @@ class ResourceCalendar(models.Model):
                 start_dt=start_dt.date(),
                 end_dt=end_dt.date(),
                 employee_id=self.env.context.get("employee_id", False),
-            )
-            .mapped("date")
+            ))
+            # In some cases, an error appears about mixing 2 models
+            # (hr.holidays.public.line + resource.calendar.leaves)
+            # in _leave_intervals or _leave_intervals_batch functions
+            # It only happen when both holidays and leaves exist.
+            # The solution is to pass an empty leave in the tuple instead
+            # of the public holiday line record, as this element has no
+            # further use except the union operation.
+            resource_leave_model = self.env["resource.calendar.leaves"]
+            for line in lines:
+                leaves.append(
+                    (
+                        datetime.combine(line.date, time.min).replace(tzinfo=tz),
+                        datetime.combine(line.date, time.max).replace(tzinfo=tz),
+                        resource_leave_model,
+                    )
+                )
+        return Intervals(leaves)
+
+    def _leave_intervals(self, start_dt, end_dt, resource=None, domain=None, tz=None):
+        """DEPRECATED since odoo/odoo#51542, but left as is for retro-compatibility"""
+        # TODO: To be removed in v14 if not used in any place
+        res = super()._leave_intervals(
+            start_dt=start_dt, end_dt=end_dt, resource=resource, domain=domain, tz=tz
         )
         for resource in resources:
             interval_resource = intervals[resource.id]
